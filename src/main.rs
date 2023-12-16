@@ -1,7 +1,7 @@
 //! Like a fork, but cooler.
 
 use std::{
-    io::{stdin, IsTerminal},
+    io::stdin,
     process::{Command, Stdio},
 };
 
@@ -32,24 +32,17 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let has_input = !stdin().is_terminal();
-
-    let input_buckets = if has_input {
-        // Collect stdin and distribute it into buckets.
-        bucket(cli.threads, &mut stdin().lines())?
-    } else {
-        vec![]
-    };
+    // Collect stdin and distribute it into buckets.
+    let input_buckets = bucket(cli.threads, &mut stdin().lines())?;
 
     // Start up child threads.
-    let children = (0..cli.threads)
-        .map(|thread| {
-            let cmd = if has_input {
+    let children = input_buckets
+        .iter()
+        .map(|bucket| {
+            let cmd = {
                 let mut cmd = cli.command.clone();
-                replace_inputs(&mut cmd, &input_buckets[thread]);
+                replace_inputs(&mut cmd, bucket);
                 cmd
-            } else {
-                cli.command.clone()
             };
 
             let mut command = Command::new(&cmd[0]);
@@ -90,11 +83,11 @@ fn bucket(
     input: &mut impl Iterator<Item = Result<String, std::io::Error>>,
 ) -> Result<Vec<Vec<String>>> {
     let mut buckets: Vec<Vec<String>> = Vec::with_capacity(num);
-    for _ in 0..num {
-        buckets.push(Vec::new());
-    }
     let mut idx = 0;
     for line in input {
+        if buckets.len() < idx + 1 {
+            buckets.push(Vec::new());
+        }
         buckets[idx].push(line?);
         idx = (idx + 1) % num;
     }
@@ -151,6 +144,15 @@ mod tests {
                 vec!["bar".to_string()],
                 vec!["baz".to_string()],
             ]
+        )
+    }
+
+    #[test]
+    fn test_buckets_does_not_create_empty_buckets() {
+        let mut input = "foo\nbar".lines().map(str::to_string).map(Ok);
+        assert_eq!(
+            bucket(3, &mut input).unwrap(),
+            vec![vec!["foo".to_string()], vec!["bar".to_string()]]
         )
     }
 
