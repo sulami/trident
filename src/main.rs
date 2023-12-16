@@ -2,12 +2,11 @@
 
 use std::{
     io::{stdin, IsTerminal},
-    process::Stdio,
+    process::{Command, Stdio},
 };
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
-use tokio::process::Command;
 
 #[derive(Parser)]
 #[command(author, version, about = "Like a fork, but cooler")]
@@ -22,8 +21,7 @@ struct Cli {
     command: Vec<String>,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if cli.threads < 1 {
@@ -69,7 +67,7 @@ async fn main() -> Result<()> {
 
     // Wait for child threads to complete, maybe print their output.
     for (i, child) in children.into_iter().enumerate() {
-        let output = child.wait_with_output().await?;
+        let output = child.wait_with_output()?;
         if !cli.silent {
             println!(
                 "[Thread {i}] exited with code {}:\n{}",

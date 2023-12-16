@@ -9,4 +9,3 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0.75"
 clap = { version = "4", features = ["derive"] }
-tokio = { version = "1", features = ["process", "full"] }
