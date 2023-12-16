@@ -6,8 +6,11 @@ jobs:
       - image: cimg/rust:1.74
     steps:
       - checkout
-      - run:
-          cargo test
+      - run: |
+          cargo install cargo-junit
+          cargo junit --name output.xml
+      - store_test_results:
+          path: output.xml
 
 workflows:
   build:
