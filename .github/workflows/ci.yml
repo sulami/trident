@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [ '**' ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: clippy
+      - name: Run tests
+        run: |
+          cargo test
+      - name: Run clippy
+        run: |
+          cargo clippy -- -D warnings
+
+  build:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: trident-${{ matrix.target }}
+          path: ./target/${{ matrix.target }}/release/trident
+
+  release:
+    if: github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        id: install_dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+      - name: Check if version has changed
+        id: check_version
+        run: |
+          echo "CURRENT_VERSION=$(cargo metadata --format-version=1 | jq -r '.packages[] | select(.name == "trident") | .version')" >> $GITHUB_ENV
+          echo "LATEST_RELEASE=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases/latest | jq -r .tag_name)" >> $GITHUB_ENV
+          if [[ "$CURRENT_VERSION" != "$LATEST_RELEASE" ]]; then echo "VERSION_CHANGED=true" >> $GITHUB_ENV; else echo "VERSION_CHANGED=false" >> $GITHUB_ENV; fi
+      - name: Create Release
+        if: env.VERSION_CHANGED == 'true'
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+  upload-release-binaries:
+    if: github.ref == 'refs/heads/master' && needs.release.outputs.VERSION_CHANGED == 'true'
+    needs: release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: trident-${{ matrix.target }}
+      - name: Upload Release Asset
+        if: env.VERSION_CHANGED == 'true'
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/${{ matrix.target }}/release/trident
+          asset_name: trident-${{ matrix.target }}
+          asset_content_type: application/octet-stream
