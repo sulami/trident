@@ -25,6 +25,32 @@ jobs:
         run: |
           cargo clippy -- -D warnings
 
+  build-windows:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Upload artifact
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: trident-${{ matrix.target }}
+          path: .\target\${{ matrix.target }}\release\trident
+
   build:
     needs: test
     strategy:
@@ -33,11 +59,9 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - os: macos-latest
-            target: x86_64-apple-darwin
-          - os: macos-latest
             target: aarch64-apple-darwin
-          # - os: windows-latest
-          #   target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -57,20 +81,18 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: [build, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           download-path: '.'
       - run: |
-          ls -l
           for dir in $(ls); do
             mv ${dir} dir-${dir}
             mv dir-${dir}/trident ./${dir}
             rmdir dir-${dir}
           done
-          ls -l
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
