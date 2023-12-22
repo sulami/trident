@@ -19,6 +19,36 @@ struct Cli {
 
     #[arg(last = true)]
     command: Vec<String>,
+
+    #[arg(short, long, help = "Distribution mode", default_value_t = Mode::Stripe)]
+    mode: Mode,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Mode {
+    Stripe,
+    Chunk,
+}
+
+impl std::fmt::Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Mode::Stripe => write!(f, "stripe"),
+            Mode::Chunk => write!(f, "chunk"),
+        }
+    }
+}
+
+impl std::str::FromStr for Mode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "stripe" => Ok(Mode::Stripe),
+            "chunk" => Ok(Mode::Chunk),
+            _ => Err(anyhow!("valid modes are: stripe, chunk")),
+        }
+    }
 }
 
 fn main() -> Result<()> {
@@ -33,7 +63,10 @@ fn main() -> Result<()> {
     }
 
     // Collect stdin and distribute it into buckets.
-    let input_buckets = bucket(cli.threads, &mut stdin().lines())?;
+    let input_buckets = match cli.mode {
+        Mode::Stripe => stripe(cli.threads, &mut stdin().lines())?,
+        Mode::Chunk => chunk(cli.threads, &mut stdin().lines())?,
+    };
 
     // Start up child threads.
     let children = input_buckets
@@ -78,7 +111,7 @@ fn main() -> Result<()> {
 /// 1 bucket: [1, 2, 3, 4, 5, 6]
 /// 2 buckets: [1, 3, 5] [2, 4, 6]
 /// 3 buckets: [1, 4] [2, 5] [3, 6]
-fn bucket(
+fn stripe(
     num: usize,
     input: &mut impl Iterator<Item = Result<String, std::io::Error>>,
 ) -> Result<Vec<Vec<String>>> {
@@ -92,6 +125,24 @@ fn bucket(
         idx = (idx + 1) % num;
     }
     Ok(buckets)
+}
+
+/// Group `input` into `num` buckets, chunking the elements across so
+/// that six elements result in:
+/// 1 bucket: [1, 2, 3, 4, 5, 6]
+/// 2 buckets: [1, 2, 3] [4, 5, 6]
+/// 3 buckets: [1, 2] [3, 4] [5, 6]
+fn chunk(
+    num: usize,
+    input: &mut impl Iterator<Item = Result<String, std::io::Error>>,
+) -> Result<Vec<Vec<String>>> {
+    let lines = input
+        .collect::<std::io::Result<Vec<_>>>()
+        .map_err(anyhow::Error::new)?;
+    Ok(lines
+        .chunks(lines.len().div_ceil(num))
+        .map(Vec::from)
+        .collect())
 }
 
 /// Replace the first instance of "{}" in `cmd` with all the items in
@@ -110,10 +161,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bucket_stripes_for_one_bucket() {
+    fn stripe_stripes_for_one_bucket() {
         let mut input = "foo\nbar\nbaz".lines().map(str::to_string).map(Ok);
         assert_eq!(
-            bucket(1, &mut input).unwrap(),
+            stripe(1, &mut input).unwrap(),
             vec![vec![
                 "foo".to_string(),
                 "bar".to_string(),
@@ -123,10 +174,10 @@ mod tests {
     }
 
     #[test]
-    fn bucket_stripes_for_two_buckets() {
+    fn stripe_stripes_for_two_buckets() {
         let mut input = "foo\nbar\nbaz".lines().map(str::to_string).map(Ok);
         assert_eq!(
-            bucket(2, &mut input).unwrap(),
+            stripe(2, &mut input).unwrap(),
             vec![
                 vec!["foo".to_string(), "baz".to_string()],
                 vec!["bar".to_string()]
@@ -135,10 +186,10 @@ mod tests {
     }
 
     #[test]
-    fn bucket_stripes_for_three_buckets() {
+    fn stripe_stripes_for_three_buckets() {
         let mut input = "foo\nbar\nbaz".lines().map(str::to_string).map(Ok);
         assert_eq!(
-            bucket(3, &mut input).unwrap(),
+            stripe(3, &mut input).unwrap(),
             vec![
                 vec!["foo".to_string()],
                 vec!["bar".to_string()],
@@ -148,10 +199,44 @@ mod tests {
     }
 
     #[test]
-    fn test_buckets_does_not_create_empty_buckets() {
+    fn stripe_does_not_create_empty_buckets() {
         let mut input = "foo\nbar".lines().map(str::to_string).map(Ok);
         assert_eq!(
-            bucket(3, &mut input).unwrap(),
+            stripe(3, &mut input).unwrap(),
+            vec![vec!["foo".to_string()], vec!["bar".to_string()]]
+        )
+    }
+
+    #[test]
+    fn chunks_chunks_for_one_bucket() {
+        let mut input = "foo\nbar\nbaz".lines().map(str::to_string).map(Ok);
+        assert_eq!(
+            chunk(1, &mut input).unwrap(),
+            vec![vec![
+                "foo".to_string(),
+                "bar".to_string(),
+                "baz".to_string()
+            ],]
+        )
+    }
+
+    #[test]
+    fn chunks_chunks_foor_two_buckets() {
+        let mut input = "foo\nbar\nbaz".lines().map(str::to_string).map(Ok);
+        assert_eq!(
+            chunk(2, &mut input).unwrap(),
+            vec![
+                vec!["foo".to_string(), "bar".to_string()],
+                vec!["baz".to_string()]
+            ]
+        )
+    }
+
+    #[test]
+    fn chunks_does_not_create_empty_buckets() {
+        let mut input = "foo\nbar".lines().map(str::to_string).map(Ok);
+        assert_eq!(
+            chunk(3, &mut input).unwrap(),
             vec![vec!["foo".to_string()], vec!["bar".to_string()]]
         )
     }
