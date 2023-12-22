@@ -95,11 +95,19 @@ fn main() -> Result<()> {
     children.into_par_iter().enumerate().for_each(|(i, child)| {
         let output = child.wait_with_output().expect("failed to wait on child");
         if !cli.silent {
-            println!(
-                "[Thread {i}] exited with code {}:\n{}",
-                output.status.code().unwrap_or_default(),
-                String::from_utf8(output.stdout).expect("failed to parse output")
+            let mut info = format!(
+                "Thread {i} exited with {}",
+                output.status.code().unwrap_or_default()
             );
+            if !output.stderr.is_empty() {
+                info.push_str("\nstderr:\n");
+                info.push_str(&String::from_utf8(output.stderr).expect("failed to parse stderr"));
+            }
+            if !output.stdout.is_empty() {
+                info.push_str("\nstdout:\n");
+                info.push_str(&String::from_utf8(output.stdout).expect("failed to parse stdout"));
+            }
+            println!("{info}");
         }
     });
 
