@@ -7,6 +7,7 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
+use rayon::prelude::*;
 
 #[derive(Parser)]
 #[command(author, version, about = "Like a fork, but cooler")]
@@ -91,17 +92,16 @@ fn main() -> Result<()> {
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Wait for child threads to complete, maybe print their output.
-    for (i, child) in children.into_iter().enumerate() {
-        let output = child.wait_with_output()?;
+    children.into_par_iter().enumerate().for_each(|(i, child)| {
+        let output = child.wait_with_output().expect("failed to wait on child");
         if !cli.silent {
             println!(
                 "[Thread {i}] exited with code {}:\n{}",
                 output.status.code().unwrap_or_default(),
-                String::from_utf8(output.stdout)?
+                String::from_utf8(output.stdout).expect("failed to parse output")
             );
         }
-    }
+    });
 
     Ok(())
 }
