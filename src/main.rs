@@ -23,6 +23,9 @@ struct Cli {
 
     #[arg(short, long, help = "Distribution mode", default_value_t = Mode::Stripe)]
     mode: Mode,
+
+    #[arg(short, long, help = "File to write output to")]
+    output_file: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -100,12 +103,26 @@ fn main() -> Result<()> {
                 output.status.code().unwrap_or_default()
             );
             if !output.stderr.is_empty() {
-                info.push_str("\nstderr:\n");
-                info.push_str(&String::from_utf8(output.stderr).expect("failed to parse stderr"));
+                if let Some(path) = cli.output_file.as_ref() {
+                    std::fs::write(format!("{path}.{i}.stderr"), &output.stderr)
+                        .expect("failed to write file");
+                } else {
+                    info.push_str("\nstderr:\n");
+                    info.push_str(
+                        &String::from_utf8(output.stderr).expect("failed to parse stderr"),
+                    );
+                }
             }
             if !output.stdout.is_empty() {
-                info.push_str("\nstdout:\n");
-                info.push_str(&String::from_utf8(output.stdout).expect("failed to parse stdout"));
+                if let Some(path) = cli.output_file.as_ref() {
+                    std::fs::write(format!("{path}.{i}.stdout"), &output.stdout)
+                        .expect("failed to write file");
+                } else {
+                    info.push_str("\nstdout:\n");
+                    info.push_str(
+                        &String::from_utf8(output.stdout).expect("failed to parse stdout"),
+                    );
+                }
             }
             println!("{info}");
         }
