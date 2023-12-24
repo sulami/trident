@@ -11,6 +11,16 @@ once.
 In some cases this can be much faster than both extremes, running the
 entire input in one single process, or running one process per input.
 
+Note that this is mostly a research project for Rust tooling and
+workflows, though it is a genuine tool that has utility, albeit in
+niche situations.
+
+## Installation
+
+Grab a pre-built binary from the releases.
+
+To build from source, just `cargo build --release` it.
+
 ## Usage
 
 Use `{}` as the placeholder for arguments. All arguments will be
